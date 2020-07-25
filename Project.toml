@@ -1,0 +1,4 @@
+name = "Synthesizer"
+uuid = "65eab244-f18a-4d75-9a26-c968e2ddff3d"
+authors = ["mccoy "]
+version = "0.1.0"
