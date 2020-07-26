@@ -2,48 +2,92 @@ module Synthesizer
 
 using Jaynes
 using IRTools
+using IRTools: @dynamo, IR, recurse!
+using MacroTools
+using MacroTools: rmlines, unblock
 
-@dynamo function synthesize(a...)
-    ir = IR(a...)
-    ir == nothing && return
-    recurse!(ir)
-    return ir
+# ------------ Fundamentals ------------ #
+
+function _lang(name, expr::Expr)
+    @capture(expr, ex_ = begin body__ end)
+    trans = Any[]
+    probs = Float64[]
+    for subexpr in body
+        @capture(subexpr, prob_ => sbod_)
+        push!(probs, prob)
+        nbod = MacroTools.postwalk(sbod) do k
+            if k == ex
+                Expr(:call, name)
+            else
+                k
+            end
+        end
+        push!(trans, nbod)
+    end
+    trans = map(enumerate(trans)) do (i, t)
+        i == length(trans) && return Expr(:return, t)
+        t = MacroTools.postwalk(t) do sub
+            if @capture(sub, $name(args__))
+                quote rand($i, $name) end
+            else
+                sub
+            end
+        end
+        quote if selection == $i
+                return $t
+            end
+        end
+    end
+    
+    return MacroTools.postwalk(unblock ∘ rmlines, quote
+                                   function $name()
+                                       selection = rand(:sel, Categorical($probs))
+                                       $(trans...)
+                                   end
+                               end)
+end
+
+macro lang(name, expr)
+    fn = _lang(name, expr)
+    fn
 end
 
 # ------------ Example usage 1 ------------ #
 
 # Declare a probabilistic DSL.
 @lang (arithmetic) expr = begin
-    0.5 => expr * expr
+    0.2 => expr * expr
     0.3 => expr + expr
-    0.2 => 2.0
+    0.5 => 2.0
 end
+
+ret, cl = simulate(arithmetic)
 
 # Insert a hole into a function.
+hole(lang::Function) = rand(gensym(), lang)
+
 function foo(x::Float64)
-    y = x * hole(arithmetic())
-    return y
+    y = x * hole(arithmetic)
+    q = hole(arithmetic)
+    return y * q
 end
 
-# Synthesize a new IR fragment which satisfies the specification. Also provide a probabilistic trace of the synthesizer.
-ir, cl = synthesize(foo, [(1.0, 2.0), (2.0, 4.0)])
-println(ir)
-
-# ------------ Example usage 2 ------------ #
-
-# Multiple languages
-@lang (arrays) expr = begin
-    0.5 => [1.0, 3.0]
-    0.5 => [3.0, 5.0]
+function synthesize(samples::Int, fn::Function, args::Tuple, d::Distribution)
+    score = Vector{Float64}(undef, samples)
+    calls = Vector{Jaynes.CallSite}(undef, samples)
+    for i in 1 : samples
+        ret, cl = simulate(fn, args...)
+        score[i] =  logpdf(d, ret)
+        calls[i] = cl
+    end
+    return Jaynes.Particles(calls, score, 0.0)
 end
 
-function bar(x::Float64)
-    y = x .+ hole(arrays())
-    z = x * hole(arithmetic())
-    return y, z
+# Score a bunch of samples from the grammar.
+ps = synthesize(10, foo, (5.0, ), Normal(5.0, 1.0))
+map(1:length(ps)) do i
+    display(ps.calls[i].trace)
+    println(ps.lws[i])
 end
-
-ir, cl = synthesize(foo, [(1.0, ([2.0, 4.0], 2.0)), (3.0, ([4.0, 6.0], 6.0))])
-println(ir)
 
 end # module
