@@ -58,7 +58,8 @@ end
 @lang (arithmetic) expr = begin
     0.2 => expr * expr
     0.3 => expr + expr
-    0.5 => 2.0
+    0.4 => 2.0
+    0.1 => 1.0
 end
 
 ret, cl = simulate(arithmetic)
@@ -72,19 +73,21 @@ function foo(x::Float64)
     return y * q
 end
 
-function synthesize(samples::Int, fn::Function, args::Tuple, d::Distribution)
-    score = Vector{Float64}(undef, samples)
-    calls = Vector{Jaynes.CallSite}(undef, samples)
+function synthesize(samples::Int, fn::Function, args::Tuple, d::Distribution; reject = -Inf)
+    score = Float64[]
+    calls = Jaynes.CallSite[]
     for i in 1 : samples
         ret, cl = simulate(fn, args...)
-        score[i] =  logpdf(d, ret)
-        calls[i] = cl
+        if logpdf(d, ret) > reject
+            push!(score, logpdf(d, ret))
+            push!(calls, cl)
+        end
     end
     return Jaynes.Particles(calls, score, 0.0)
 end
 
 # Score a bunch of samples from the grammar.
-ps = synthesize(10, foo, (5.0, ), Normal(5.0, 1.0))
+ps = synthesize(100, foo, (5.0, ), Normal(5.0, 1.0); reject = -10.0)
 map(1:length(ps)) do i
     display(ps.calls[i].trace)
     println(ps.lws[i])
