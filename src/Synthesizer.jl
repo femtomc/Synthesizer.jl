@@ -181,10 +181,11 @@ reorder(x::Array) = begin
 end
 
 @lang (array_operation) _1 expr = begin
-    0.25 => swap!(_1)
-    0.25 => reorder(_1)
-    0.25 => swap_head!(_1)
-    0.25 => swap_tail!(_1)
+    0.20 => swap!(_1)
+    0.20 => reorder(_1)
+    0.20 => swap_head!(_1)
+    0.20 => swap_tail!(_1)
+    0.20 => reverse(_1)
 end
 
 # Some Boolean holes.
@@ -193,7 +194,7 @@ end
     0.3 => false
 end
 
-function check(x::Array{Float64})
+function check(x::Array{T}) where T <: Number
     length(x) == 1 && return true
     i = x[1]
     for j in x[2 : end]
@@ -205,7 +206,7 @@ function check(x::Array{Float64})
     return true
 end
 
-function foo(x::Array{Float64})
+function foo(x::Array{T}) where T <: Number
     i = 0
     while !check(x)
         x = hole(:hole_2 => i, array_operation, x)
@@ -229,7 +230,10 @@ function synthesize(iters, fn::Function, pairs::Array{T}) where T <: Tuple
     return nothing, nothing
 end
 
-ret, cl = synthesize(1000, foo, [([1.0, 5.0, 2.0, 3.0], [1.0, 2.0, 3.0, 5.0])])
+ret, cl = synthesize(1000, foo, [(reverse([i for i in 1 : 50]), 
+                                  [i for i in 1 : 50])])
+
+# Display.
 ret != nothing && cl != nothing && begin
     display(cl.trace)
     println(ret)
