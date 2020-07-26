@@ -66,10 +66,11 @@ ret, cl = simulate(arithmetic)
 
 # Insert a hole into a function.
 hole(lang::Function) = rand(gensym(), lang)
+hole(addr::Jaynes.Address, lang::Function) = rand(addr, lang)
 
 function foo(x::Float64)
-    y = x * hole(arithmetic)
-    q = hole(arithmetic)
+    y = x * hole(1, arithmetic)
+    q = hole(2, arithmetic)
     return y * q
 end
 
@@ -87,7 +88,7 @@ function synthesize(samples::Int, fn::Function, args::Tuple, d::Distribution; re
 end
 
 # Score a bunch of samples from the grammar.
-ps = synthesize(100, foo, (5.0, ), Normal(5.0, 1.0); reject = -10.0)
+ps = synthesize(100, foo, (5.0, ), Normal(5.0, 1.0); reject = -Inf)
 map(1:length(ps)) do i
     display(ps.calls[i].trace)
     println(ps.lws[i])
