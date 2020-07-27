@@ -5,7 +5,7 @@ using .Synthesizer
 
 # ------------ Example usage 2 ------------ #
 
-# A small array operation language.
+# Array operation primitives.
 swap!(x::Array) = begin
     if length(x) != 1
         x[1], x[end] = x[end], x[1]
@@ -44,6 +44,7 @@ reorder(x::Array) = begin
     return snd
 end
 
+# A small array operation language.
 @lang (array_operation) _1 expr = begin
     0.10 => swap!(_1)
     0.10 => reorder(_1)
@@ -52,12 +53,7 @@ end
     0.50 => reverse(_1)
 end
 
-# Some Boolean holes.
-@lang (boolean) expr = begin
-    0.7 => true
-    0.3 => false
-end
-
+# Utility check to assert to assert the sorted property. NOT USED.
 function check(x::Array{T}) where T <: Number
     length(x) == 1 && return true
     i = x[1]
