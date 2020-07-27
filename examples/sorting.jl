@@ -70,4 +70,15 @@ function check(x::Array{T}) where T <: Number
     return true
 end
 
+function foo(x::Array{T}) where T <: Number
+    while !check(x)
+        x = hole(array_operation, x)
+    end
+    return x
+end
+
+init, target = reverse([i for i in 1 : 10]), [i for i in 1 : 10]
+ret, cl = synthesize(foo, [(init, target)])
+!(cl == nothing) && display(cl.trace)
+
 end # module

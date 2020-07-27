@@ -1,10 +1,12 @@
 module Synthesizer
 
-using Jaynes
+using Reexport
+@reexport using Jaynes
 using IRTools
 using IRTools: @dynamo, IR, recurse!
 using MacroTools
 using MacroTools: rmlines, unblock
+using Mjolnir
 
 # ------------ Fundamentals ------------ #
 
@@ -88,16 +90,17 @@ end
 
 macro lang(name, expr)
     fn = _lang(name, expr)
-    fn
+    esc(fn)
 end
 
 macro lang(name, args, expr)
     fn = _lang(name, args, expr)
-    fn
+    esc(fn)
 end
 
 # Insert a hole into a function.
 hole(lang::Function) = rand(gensym(), lang)
+hole(lang::Function, args...) = rand(gensym(), lang, args...)
 hole(addr::Jaynes.Address, lang::Function) = rand(addr, lang)
 hole(addr::Jaynes.Address, lang::Function, args...) = rand(addr, lang, args...)
 
@@ -128,5 +131,7 @@ function synthesize(fn::Function, pairs::Array{T}; iters = 1000) where T <: Tupl
     end
     return nothing, nothing
 end
+
+export @lang, synthesize, hole
 
 end # module
