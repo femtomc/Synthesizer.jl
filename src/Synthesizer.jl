@@ -104,32 +104,29 @@ hole(lang::Function, args...) = rand(gensym(), lang, args...)
 hole(addr::Jaynes.Address, lang::Function) = rand(addr, lang)
 hole(addr::Jaynes.Address, lang::Function, args...) = rand(addr, lang, args...)
 
-function synthesize(samples::Int, fn::Function, args::Tuple, d::Distribution; reject = -Inf)
-    score = Float64[]
-    calls = Jaynes.CallSite[]
-    for i in 1 : samples
-        ret, cl = simulate(fn, args...)
-        if logpdf(d, ret) > reject
-            push!(score, logpdf(d, ret))
-            push!(calls, cl)
+function synthesize(sel::Array{K}, fn::Function, pair::T; iters = 50) where {K <: Jaynes.ConstrainedSelection, T <: Tuple}
+    in, out = pair
+    success = Jaynes.CallSite[]
+    Threads.@threads for s in sel
+        for i in iters
+            ret, cl, w = generate(s, fn, in)
+            out == ret && push!(success, cl)
         end
     end
-    return Jaynes.Particles(calls, score, 0.0)
+    return success
 end
 
-function synthesize(fn::Function, pairs::Array{T}; iters = 1000) where T <: Tuple
-    found = false
-    while !found && iters != 0
-        for (x, y) in pairs
-            ret, cl = propose(fn, x)
-            if ret == y 
-                return ret, cl
-            end
-            continue
+function synthesize(fn::Function, pairs::Array{T}; iters = 50) where T <: Tuple
+    local cls
+    constraints = [selection()]
+    for p in pairs
+        cls = synthesize(constraints, fn, p; iters = iters)
+        cls == nothing && return cls
+        constraints = map(cls) do cl
+            get_selection(cl)
         end
-        iters -= 1
     end
-    return nothing, nothing
+    return cls
 end
 
 export @lang, synthesize, hole

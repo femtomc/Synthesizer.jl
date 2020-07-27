@@ -45,11 +45,11 @@ reorder(x::Array) = begin
 end
 
 @lang (array_operation) _1 expr = begin
-    0.20 => swap!(_1)
-    0.20 => reorder(_1)
-    0.20 => swap_head!(_1)
+    0.10 => swap!(_1)
+    0.10 => reorder(_1)
+    0.10 => swap_head!(_1)
     0.20 => swap_tail!(_1)
-    0.20 => reverse(_1)
+    0.50 => reverse(_1)
 end
 
 # Some Boolean holes.
@@ -70,15 +70,23 @@ function check(x::Array{T}) where T <: Number
     return true
 end
 
-function foo(x::Array{T}) where T <: Number
-    while !check(x)
-        x = hole(array_operation, x)
-    end
+# Function with holes.
+function sort!(x::Array{T}) where T <: Number
+    x = hole(:hole, array_operation, x)
     return x
 end
 
-init, target = reverse([i for i in 1 : 10]), [i for i in 1 : 10]
-ret, cl = synthesize(foo, [(init, target)])
-!(cl == nothing) && display(cl.trace)
+# Examples.
+sc = [[i for i in 1 : j] for j in 1 : 20]
+sc = map(sc) do s
+    reverse(s), s
+end
+
+@time cls = synthesize(sort!, sc; iters = 1000)
+!(cls == nothing) && begin
+    map(cls) do cl
+        display(cl.trace)
+    end
+end
 
 end # module
