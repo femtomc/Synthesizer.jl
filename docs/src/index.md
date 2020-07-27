@@ -49,25 +49,37 @@ end
 
 To summarize: in `Synthesizer.jl`, the user writes small probabilistic DSLs (specifically, _probabilistic context-free grammars_) which can then be used inside holes in other functions. The process of synthesis is expressed using a [universal trace-based probabilistic programming system](https://github.com/femtomc/Jaynes.jl).
 
+---
+
+The core of the engine is a multi-threaded rejection sampler.
+
 ```julia
-function synthesize(fn::Function, pairs::Array{T}; iters = 1000) where T <: Tuple
-    found = false
-    while !found && iters != 0
-        for (x, y) in pairs
-            ret, cl = propose(fn, x)
-            ret == y  || continue
-                return ret, cl
-            end
-            continue
+function synthesize(sel::Array{K}, fn::Function, pair::T; iters = 50) where {K <: Jaynes.ConstrainedSelection, T <: Tuple}
+    in, out = pair
+    success = Jaynes.CallSite[]
+    Threads.@threads for s in sel
+        for i in iters
+            ret, cl, w = generate(s, fn, in)
+            out == ret && push!(success, cl)
         end
-        iters -= 1
     end
-    return nothing, nothing
+    return success
+end
+
+function synthesize(fn::Function, pairs::Array{T}; iters = 50) where T <: Tuple
+    local cls
+    constraints = [selection()]
+    for p in pairs
+        cls = synthesize(constraints, fn, p; iters = iters)
+        cls == nothing && return cls
+        constraints = map(cls) do cl
+            get_selection(cl)
+        end
+    end
+    return cls
 end
 ```
 
-Here, `synthesize` requires that the user pass in a function with holes, as well as `pairs` of `(input, output)` tuples. `propose` generates a possible solution. In our case, `propose` will only terminate if `check` is true - so it will halt with probability 1 if and only if a solution is expressible using the high-level structure of `sort!` with `array_operation` hole.
-
-This version of `synthesize` will return an `Array` of the returned examples if it successful produces a trace which matches the examples. It will also return the trace in a `CallSite` representation. This is a trace of the original function, as well as a recording of the choices made by the PCFG.
+Here, `synthesize` requires that the user pass in a function with holes, as well as `pairs` of `(input, output)` tuples. `generate` generates a set of possible solutions. This version of `synthesize` will return an `Array` of successful traces (if the search succeeds). The `CallSite` representation is a trace of the original function, as well as a recording of the choices made by the PCFG.
 
 In future versions, `Synthesizer.jl` will support the ability to compile these traces into IR and generate a new (optimized) method body for the synthesized function.
