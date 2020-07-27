@@ -209,13 +209,13 @@ end
 function foo(x::Array{T}) where T <: Number
     i = 0
     while !check(x)
-        x = hole(:hole_2 => i, array_operation, x)
+        x = hole(:hole => i, array_operation, x)
         i += 1
     end
     return x
 end
 
-function synthesize(iters, fn::Function, pairs::Array{T}) where T <: Tuple
+function synthesize(fn::Function, pairs::Array{T}; iters = 1000) where T <: Tuple
     found = false
     while !found && iters != 0
         for (x, y) in pairs
@@ -223,19 +223,19 @@ function synthesize(iters, fn::Function, pairs::Array{T}) where T <: Tuple
             if ret == y 
                 return ret, cl
             end
-            iters -= 1
             continue
         end
+        iters -= 1
     end
     return nothing, nothing
 end
 
-ret, cl = synthesize(1000, foo, [(reverse([i for i in 1 : 50]), 
-                                  [i for i in 1 : 50])])
+ret, cl = synthesize(foo, [(reverse([i for i in 1 : 100]), [i for i in 1 : 100])])
 
 # Display.
 ret != nothing && cl != nothing && begin
     display(cl.trace)
+    println(cl.score)
     println(ret)
 end
 
