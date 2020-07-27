@@ -20,17 +20,27 @@ end</code></pre><p>This DSL is <em>probabilistic</em> - the numbers on the left-
         i = j
     end
     return true
-end</code></pre><p>To summarize: in <code>Synthesizer.jl</code>, the user writes small probabilistic DSLs (specifically, <em>probabilistic context-free grammars</em>) which can then be used inside holes in other functions. The process of synthesis is expressed using a <a href="https://github.com/femtomc/Jaynes.jl">universal trace-based probabilistic programming system</a>.</p><pre><code class="language-julia">function synthesize(fn::Function, pairs::Array{T}; iters = 1000) where T &lt;: Tuple
-    found = false
-    while !found &amp;&amp; iters != 0
-        for (x, y) in pairs
-            ret, cl = propose(fn, x)
-            ret == y  || continue
-                return ret, cl
-            end
-            continue
+end</code></pre><p>To summarize: in <code>Synthesizer.jl</code>, the user writes small probabilistic DSLs (specifically, <em>probabilistic context-free grammars</em>) which can then be used inside holes in other functions. The process of synthesis is expressed using a <a href="https://github.com/femtomc/Jaynes.jl">universal trace-based probabilistic programming system</a>.</p><hr/><p>The core of the engine is a multi-threaded rejection sampler.</p><pre><code class="language-julia">function synthesize(sel::Array{K}, fn::Function, pair::T; iters = 50) where {K &lt;: Jaynes.ConstrainedSelection, T &lt;: Tuple}
+    in, out = pair
+    success = Jaynes.CallSite[]
+    Threads.@threads for s in sel
+        for i in iters
+            ret, cl, w = generate(s, fn, in)
+            out == ret &amp;&amp; push!(success, cl)
         end
-        iters -= 1
     end
-    return nothing, nothing
-end</code></pre><p>Here, <code>synthesize</code> requires that the user pass in a function with holes, as well as <code>pairs</code> of <code>(input, output)</code> tuples. <code>propose</code> generates a possible solution. In our case, <code>propose</code> will only terminate if <code>check</code> is true - so it will halt with probability 1 if and only if a solution is expressible using the high-level structure of <code>sort!</code> with <code>array_operation</code> hole.</p><p>This version of <code>synthesize</code> will return an <code>Array</code> of the returned examples if it successful produces a trace which matches the examples. It will also return the trace in a <code>CallSite</code> representation. This is a trace of the original function, as well as a recording of the choices made by the PCFG.</p><p>In future versions, <code>Synthesizer.jl</code> will support the ability to compile these traces into IR and generate a new (optimized) method body for the synthesized function.</p></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 27 July 2020 03:45">Monday 27 July 2020</span>. Using Julia version 1.4.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+    return success
+end
+
+function synthesize(fn::Function, pairs::Array{T}; iters = 50) where T &lt;: Tuple
+    local cls
+    constraints = [selection()]
+    for p in pairs
+        cls = synthesize(constraints, fn, p; iters = iters)
+        cls == nothing &amp;&amp; return cls
+        constraints = map(cls) do cl
+            get_selection(cl)
+        end
+    end
+    return cls
+end</code></pre><p>Here, <code>synthesize</code> requires that the user pass in a function with holes, as well as <code>pairs</code> of <code>(input, output)</code> tuples. <code>generate</code> generates a set of possible solutions. This version of <code>synthesize</code> will return an <code>Array</code> of successful traces (if the search succeeds). The <code>CallSite</code> representation is a trace of the original function, as well as a recording of the choices made by the PCFG.</p><p>In future versions, <code>Synthesizer.jl</code> will support the ability to compile these traces into IR and generate a new (optimized) method body for the synthesized function.</p></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 27 July 2020 03:48">Monday 27 July 2020</span>. Using Julia version 1.4.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
