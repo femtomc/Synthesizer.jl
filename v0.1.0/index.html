@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Introduction · Synthesizer.jl</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script><link href="assets/favicon.ico" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit">Synthesizer.jl</span></div><form class="docs-search" action="search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Introduction</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Introduction</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Introduction</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/femtomc/Synthesizer.jl/blob/master/docs/src/index.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><p>This is the documentation for the <a href="https://github.com/femtomc/Synthesizer.jl">Synthesizer.jl</a> program synthesis system.</p><p>The goal of this package is to provide a set of interfaces for probabilistic program synthesis via sketching. The hope is to faciliate research into probabilistic program synthesis, as well as provide a pipeline to optimize synthesized programs as IR fragments, before compilation into a method body in Julia.</p><hr/><p>The idea behind sketching is to provide a high-level skeleton of the program (or function) you want to synthesize. This high-level skeleton contains a number of &quot;holes&quot; which the synthesizer should fill with an expression or function.</p><p>Let&#39;s say we wanted to synthesize a sorting program.</p><pre><code class="language-julia">function sort!(x::Array{T}) where T &lt;: Number
+    while !check(x)
+        x = hole(array_operation, x)
+    end
+    return x
+end</code></pre><p>Here, I&#39;ve provided the high-level structure of the function (e.g. control flow) but I&#39;ve also inserted a hole, and I&#39;m telling the synthesizer what sort of hole it should be (an <code>array_operation</code> function, which acts on <code>x</code>). <code>array_operation</code> is defined by a miniature DSL.</p><pre><code class="language-julia">@lang (array_operation) _1 expr = begin
+    0.20 =&gt; swap!(_1)
+    0.20 =&gt; reorder(_1)
+    0.20 =&gt; swap_head!(_1)
+    0.20 =&gt; swap_tail!(_1)
+    0.20 =&gt; reverse(_1)
+end</code></pre><p>This DSL is <em>probabilistic</em> - the numbers on the left-hand side correspond to probability of selection by the synthesizer. Furthermore, we&#39;ve specified that holes of <code>array_operation</code> take in a single argument (here, by specifying <code>_1</code> before defining the <code>expr</code> of type <code>array_operation</code>).</p><p>In our high-level program, we&#39;ve cheated a bit by providing a way for the program to determine if it&#39;s sorted the list correctly. The function <code>check</code> checks if the array satisfies the sorted condition.</p><pre><code class="language-julia">function check(x::Array{T}) where T &lt;: Number
+    length(x) == 1 &amp;&amp; return true
+    i = x[1]
+    for j in x[2 : end]
+        if !(i &lt; j)
+            return false
+        end
+        i = j
+    end
+    return true
+end</code></pre><p>To summarize: in <code>Synthesizer.jl</code>, the user writes small probabilistic DSLs (specifically, <em>probabilistic context-free grammars</em>) which can then be used inside holes in other functions. The process of synthesis is expressed using a <a href="https://github.com/femtomc/Jaynes.jl">universal trace-based probabilistic programming system</a>.</p><hr/><p>The core of the engine is a multi-threaded rejection sampler.</p><pre><code class="language-julia">function synthesize(sel::Array{K}, fn::Function, pair::T; iters = 50) where {K &lt;: Jaynes.ConstrainedSelection, T &lt;: Tuple}
+    in, out = pair
+    success = Jaynes.CallSite[]
+    Threads.@threads for s in sel
+        for i in iters
+            ret, cl, w = generate(s, fn, in)
+            out == ret &amp;&amp; push!(success, cl)
+        end
+    end
+    return success
+end
+
+function synthesize(fn::Function, pairs::Array{T}; iters = 50) where T &lt;: Tuple
+    local cls
+    constraints = [selection()]
+    for p in pairs
+        cls = synthesize(constraints, fn, p; iters = iters)
+        cls == nothing &amp;&amp; return cls
+        constraints = map(cls) do cl
+            get_selection(cl)
+        end
+    end
+    return cls
+end</code></pre><p>Here, <code>synthesize</code> requires that the user pass in a function with holes, as well as <code>pairs</code> of <code>(input, output)</code> tuples. <code>generate</code> generates a set of possible solutions. This version of <code>synthesize</code> will return an <code>Array</code> of successful traces (if the search succeeds). The <code>CallSite</code> representation is a trace of the original function, as well as a recording of the choices made by the PCFG.</p><p>In future versions, <code>Synthesizer.jl</code> will support the ability to compile these traces into IR and generate a new (optimized) method body for the synthesized function.</p></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Thursday 30 July 2020 18:55">Thursday 30 July 2020</span>. Using Julia version 1.4.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
